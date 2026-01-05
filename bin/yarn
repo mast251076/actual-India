@@ -1,0 +1,2 @@
+#!/bin/sh
+node.exe "C:\Users\masta\projects\Actual\.yarn\releases\yarn-4.10.3.cjs" "$@"

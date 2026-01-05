@@ -54,31 +54,34 @@ function extractCommonThings(
   payees: MockPayeeEntity[],
   groups: CategoryGroupEntity[],
 ) {
-  const incomePayee = payees.find(p => p.name === 'Deposit');
+  const incomePayee = payees.find(p => p.name === 'Salary');
   const expensePayees = payees.filter(
-    p => p.name !== 'Deposit' && p.name !== 'Starting Balance',
+    p => p.name !== 'Salary' && p.name !== 'Starting Balance',
   );
-  const expenseGroup = groups.find(g => !g.is_income);
+  const expenseGroup = groups.find(g => g.name === 'Essential Expenses');
   const incomeGroup = groups.find(g => g.is_income);
-  const categories = expenseGroup.categories.filter(
-    c =>
-      [
-        'Food',
-        'Restaurants',
-        'Entertainment',
-        'Clothing',
-        'General',
-        'Gift',
-        'Medical',
-      ].indexOf(c.name) !== -1,
-  );
+  const categories = groups
+    .flatMap(g => g.categories)
+    .filter(
+      c =>
+        [
+          'Grocery (Kirana)',
+          'Dining Out',
+          'Entertainment/Movies',
+          'Clothing',
+          'Pocket Money',
+          'Festivals (Diwali/EID)',
+          'Doctor & Pharmacy',
+        ].indexOf(c.name) !== -1,
+    );
 
   return {
     incomePayee,
     expensePayees: expensePayees.filter(p => !p.bill),
     incomeGroup,
     expenseCategories: categories,
-    billCategories: groups.find(g => g.name === 'Bills').categories,
+    billCategories: groups.find(g => g.name === 'Essential Expenses')
+      .categories,
     billPayees: expensePayees.filter(p => p.bill),
   };
 }
@@ -182,10 +185,12 @@ async function fillPrimaryChecking(
     if (monthUtils.isBefore(date, currentDay)) {
       transactions.push({
         amount: -10000,
-        payee: billPayees.find(p => p.name.toLowerCase().includes('power')).id,
+        payee: billPayees.find(p => p.name.toLowerCase().includes('bescom')).id,
         account: account.id,
         date,
-        category: billCategories.find(c => c.name === 'Power').id,
+        category: billCategories.find(c =>
+          c.name.includes('Electricity'),
+        ).id,
       });
     }
 
@@ -193,10 +198,10 @@ async function fillPrimaryChecking(
     if (monthUtils.isBefore(date, currentDay)) {
       transactions.push({
         amount: -9000,
-        payee: billPayees.find(p => p.name.toLowerCase().includes('water')).id,
+        payee: billPayees.find(p => p.name.toLowerCase().includes('indane')).id,
         account: account.id,
         date,
-        category: billCategories.find(c => c.name === 'Water').id,
+        category: billCategories.find(c => c.name.includes('LPG')).id,
       });
     }
 
@@ -204,10 +209,11 @@ async function fillPrimaryChecking(
     if (monthUtils.isBefore(date, currentDay)) {
       transactions.push({
         amount: -120000,
-        payee: billPayees.find(p => p.name.toLowerCase().includes('housy')).id,
+        payee: billPayees.find(p => p.name.toLowerCase().includes('hdfc')).id,
         account: account.id,
         date,
-        category: billCategories.find(c => c.name === 'Mortgage').id,
+        category: billCategories.find(c => c.name.includes('Rent/Home Loan'))
+          .id,
       });
     }
 
@@ -215,11 +221,10 @@ async function fillPrimaryChecking(
     if (monthUtils.isBefore(date, currentDay)) {
       transactions.push({
         amount: -6000,
-        payee: billPayees.find(p => p.name.toLowerCase().includes('internet'))
-          .id,
+        payee: billPayees.find(p => p.name.toLowerCase().includes('fiber')).id,
         account: account.id,
         date,
-        category: billCategories.find(c => c.name === 'Internet').id,
+        category: billCategories.find(c => c.name.includes('Internet')).id,
       });
     }
 
@@ -227,11 +232,10 @@ async function fillPrimaryChecking(
     if (monthUtils.isBefore(date, currentDay)) {
       transactions.push({
         amount: -7500,
-        payee: billPayees.find(p => p.name.toLowerCase().includes('t-mobile'))
-          .id,
+        payee: billPayees.find(p => p.name.toLowerCase().includes('jio')).id,
         account: account.id,
         date,
-        category: billCategories.find(c => c.name === 'Cell').id,
+        category: billCategories.find(c => c.name.includes('Mobile')).id,
       });
     }
   }
@@ -460,7 +464,7 @@ async function fillOther(handlers, account, payees, groups) {
 }
 
 async function createBudget(accounts, payees, groups) {
-  const primaryAccount = accounts.find(a => (a.name = 'Bank of America'));
+  const primaryAccount = accounts.find(a => a.name === 'HDFC Bank');
   const earliestDate = (
     await db.first<Pick<db.DbViewTransaction, 'date'>>(
       `SELECT t.date FROM v_transactions t LEFT JOIN accounts a ON t.account = a.id
@@ -510,33 +514,33 @@ async function createBudget(accounts, payees, groups) {
           month >=
           monthUtils.monthFromDate(db.fromDateRepr(earliestPrimaryDate))
         ) {
-          setBudget(month, category('Food'), 40000);
-          setBudget(month, category('Restaurants'), 30000);
-          setBudget(month, category('Entertainment'), 10000);
+          setBudget(month, category('Grocery (Kirana)'), 40000);
+          setBudget(month, category('Dining Out'), 30000);
+          setBudget(month, category('Entertainment/Movies'), 10000);
           setBudget(month, category('Clothing'), 3000);
-          setBudget(month, category('General'), 50000);
-          setBudget(month, category('Gift'), 7500);
-          setBudget(month, category('Medical'), 10000);
+          setBudget(month, category('Personal Care/Salon'), 5000);
+          setBudget(month, category('Festivals (Diwali/Eid/Christmas)'), 7500);
+          setBudget(month, category('Doctor & Pharmacy'), 10000);
 
-          setBudget(month, category('Cell'), 7500);
-          setBudget(month, category('Internet'), 6000);
-          setBudget(month, category('Mortgage'), 120000);
-          setBudget(month, category('Water'), 9000);
-          setBudget(month, category('Power'), 10000);
+          setBudget(month, category('Mobile Recharge (Jio/Airtel)'), 7500);
+          setBudget(month, category('Internet/Broadband'), 6000);
+          setBudget(month, category('Rent/Home Loan EMI'), 120000);
+          setBudget(month, category('Water & Maintenance'), 9000);
+          setBudget(month, category('Electricity (BESCOM/BSES)'), 10000);
         } else {
-          setBudgetIfSpent(month, category('Food'));
-          setBudgetIfSpent(month, category('Restaurants'));
-          setBudgetIfSpent(month, category('Entertainment'));
+          setBudgetIfSpent(month, category('Grocery (Kirana)'));
+          setBudgetIfSpent(month, category('Dining Out'));
+          setBudgetIfSpent(month, category('Entertainment/Movies'));
           setBudgetIfSpent(month, category('Clothing'));
-          setBudgetIfSpent(month, category('General'));
-          setBudgetIfSpent(month, category('Gift'));
-          setBudgetIfSpent(month, category('Medical'));
+          setBudgetIfSpent(month, category('Personal Care/Salon'));
+          setBudgetIfSpent(month, category('Festivals (Diwali/Eid/Christmas)'));
+          setBudgetIfSpent(month, category('Doctor & Pharmacy'));
 
-          setBudgetIfSpent(month, category('Cell'));
-          setBudgetIfSpent(month, category('Internet'));
-          setBudgetIfSpent(month, category('Mortgage'));
-          setBudgetIfSpent(month, category('Water'));
-          setBudgetIfSpent(month, category('Power'));
+          setBudgetIfSpent(month, category('Mobile Recharge (Jio/Airtel)'));
+          setBudgetIfSpent(month, category('Internet/Broadband'));
+          setBudgetIfSpent(month, category('Rent/Home Loan EMI'));
+          setBudgetIfSpent(month, category('Water & Maintenance'));
+          setBudgetIfSpent(month, category('Electricity (BESCOM/BSES)'));
         }
       }
     }),
@@ -550,7 +554,7 @@ async function createBudget(accounts, payees, groups) {
       for (const month of months) {
         if (
           month >=
-            monthUtils.monthFromDate(db.fromDateRepr(earliestPrimaryDate)) &&
+          monthUtils.monthFromDate(db.fromDateRepr(earliestPrimaryDate)) &&
           month <= monthUtils.currentMonth()
         ) {
           const sheetName = monthUtils.sheetForMonth(month);
@@ -606,14 +610,16 @@ export async function createTestBudget(handlers: Handlers) {
   await db.runQuery('DELETE FROM category_groups');
 
   const accounts: { name: string; offBudget?: boolean; id?: string }[] = [
-    { name: 'Bank of America' },
-    { name: 'Ally Savings' },
-    { name: 'Capital One Checking' },
-    { name: 'HSBC' },
-    { name: 'Vanguard 401k', offBudget: true },
-    { name: 'Mortgage', offBudget: true },
-    { name: 'House Asset', offBudget: true },
-    { name: 'Roth IRA', offBudget: true },
+    { name: 'HDFC Bank' },
+    { name: 'SBI Savings' },
+    { name: 'ICICI Bank' },
+    { name: 'Axis Bank' },
+    { name: 'Paytm Wallet' },
+    { name: 'Amazon Pay' },
+    { name: 'EPF/NPS', offBudget: true },
+    { name: 'Home Loan', offBudget: true },
+    { name: 'Property Asset', offBudget: true },
+    { name: 'Mutual Funds', offBudget: true },
   ];
 
   await runMutator(async () => {
@@ -624,17 +630,17 @@ export async function createTestBudget(handlers: Handlers) {
 
   const newPayees: Array<MockPayeeEntity> = [
     { name: 'Starting Balance' },
-    { name: 'Kroger' },
-    { name: 'Publix' },
-    { name: 'Home Depot' },
-    { name: 'Movies' },
-    { name: 'Online store' },
-    { name: 'Deposit' },
-    { name: 'Dominion Power', bill: true },
-    { name: 'Extra Watery', bill: true },
-    { name: 'Housy House', bill: true },
-    { name: 'Fast Internet', bill: true },
-    { name: 'T-mobile', bill: true },
+    { name: 'BigBasket' },
+    { name: 'Swiggy' },
+    { name: 'Zomato' },
+    { name: 'Reliance Digital' },
+    { name: 'Amazon India' },
+    { name: 'Salary' },
+    { name: 'BESCOM', bill: true },
+    { name: 'Indane Gas', bill: true },
+    { name: 'HDFC Bank EMI', bill: true },
+    { name: 'Airtel Fiber', bill: true },
+    { name: 'Jio Mobile', bill: true },
   ];
 
   const payees: PayeeEntity[] = [];
@@ -654,34 +660,90 @@ export async function createTestBudget(handlers: Handlers) {
 
   const newCategoryGroups: Array<CategoryGroupDefinition> = [
     {
-      name: 'Usual Expenses',
+      name: 'Essential Expenses',
       categories: [
-        { name: 'Savings' },
-        { name: 'Medical' },
-        { name: 'Gift' },
-        { name: 'General' },
-        { name: 'Clothing' },
-        { name: 'Entertainment' },
-        { name: 'Restaurants' },
-        { name: 'Food' },
+        { name: 'Rent/Home Loan EMI' },
+        { name: 'Grocery (Kirana)' },
+        { name: 'Fruits & Vegetables' },
+        { name: 'Milk & Dairy' },
+        { name: 'Electricity (BESCOM/BSES)' },
+        { name: 'Water & Maintenance' },
+        { name: 'LPG/Cylinder' },
+        { name: 'Domestic Help (Maid/Cook)' },
       ],
     },
     {
-      name: 'Bills',
+      name: 'Personal & Lifestyle',
       categories: [
-        { name: 'Power' },
-        { name: 'Water' },
-        { name: 'Mortgage' },
-        { name: 'Internet' },
-        { name: 'Cell' },
+        { name: 'Mobile Recharge (Jio/Airtel)' },
+        { name: 'Internet/Broadband' },
+        { name: 'Dining Out' },
+        { name: 'Swiggy/Zomato' },
+        { name: 'Entertainment/Movies' },
+        { name: 'OTT (Hotstar/Netflix/Prime)' },
+        { name: 'Clothing' },
+        { name: 'Personal Care/Salon' },
+        { name: 'Shopping (Amazon/Flipkart)' },
+      ],
+    },
+    {
+      name: 'Transport',
+      categories: [
+        { name: 'Petrol/Diesel' },
+        { name: 'Auto/Uber/Ola' },
+        { name: 'Vehicle Maintenance' },
+        { name: 'Insurance (Vehicle)' },
+        { name: 'Public Transport (Metro/Bus)' },
+      ],
+    },
+    {
+      name: 'Health & Education',
+      categories: [
+        { name: 'Doctor & Pharmacy' },
+        { name: 'Health Insurance' },
+        { name: 'Gym/Sports' },
+        { name: 'School/College Fees' },
+        { name: 'Books & Learning' },
+      ],
+    },
+    {
+      name: 'Financial & Taxes',
+      categories: [
+        { name: 'Income Tax' },
+        { name: 'Professional Tax' },
+        { name: 'GST Paid' },
+        { name: 'Bank Fees & Charges' },
+        { name: 'Life Insurance (LIC/Term)' },
+      ],
+    },
+    {
+      name: 'Savings & Investments',
+      categories: [
+        { name: 'PPF/NPS' },
+        { name: 'Mutual Funds (SIP)' },
+        { name: 'Stocks/Equity' },
+        { name: 'Fixed Deposit/RD' },
+        { name: 'Gold/Silver' },
+        { name: 'Emergency Fund' },
+      ],
+    },
+    {
+      name: 'Gifts & Festivals',
+      categories: [
+        { name: 'Festivals (Diwali/Eid/Christmas)' },
+        { name: 'Charity/Donations' },
+        { name: 'Wedding/Event Gifts' },
+        { name: 'Pocket Money' },
       ],
     },
     {
       name: 'Income',
       is_income: true,
       categories: [
-        { name: 'Income', is_income: true },
-        { name: 'Misc', is_income: true },
+        { name: 'Salary', is_income: true },
+        { name: 'Bonus/Incentive', is_income: true },
+        { name: 'Interest/Dividends', is_income: true },
+        { name: 'Rental Income', is_income: true },
         { name: 'Starting Balances', is_income: true },
       ],
     },
@@ -724,23 +786,23 @@ export async function createTestBudget(handlers: Handlers) {
   await runMutator(() =>
     batchMessages(async () => {
       for (const account of accounts) {
-        if (account.name === 'Bank of America') {
+        if (account.name === 'HDFC Bank') {
           await fillPrimaryChecking(handlers, account, payees, allGroups);
         } else if (
-          account.name === 'Capital One Checking' ||
-          account.name === 'HSBC'
+          account.name === 'ICICI Bank' ||
+          account.name === 'Axis Bank'
         ) {
           await fillChecking(handlers, account, payees, allGroups);
-        } else if (account.name === 'Ally Savings') {
+        } else if (account.name === 'SBI Savings') {
           await fillSavings(handlers, account, payees, allGroups);
         } else if (
-          account.name === 'Vanguard 401k' ||
-          account.name === 'Roth IRA'
+          account.name === 'EPF/NPS' ||
+          account.name === 'Mutual Funds'
         ) {
           await fillInvestment(handlers, account, payees, allGroups);
-        } else if (account.name === 'Mortgage') {
+        } else if (account.name === 'Home Loan') {
           await fillMortgage(handlers, account, payees, allGroups);
-        } else if (account.name === 'House Asset') {
+        } else if (account.name === 'Property Asset') {
           await fillOther(handlers, account, payees, allGroups);
         } else {
           console.error('Unknown account name for test budget: ', account.name);
@@ -756,7 +818,7 @@ export async function createTestBudget(handlers: Handlers) {
   // This might happen depending on the transactions added, but we
   // don't want to show that as it'd be weird. We modify the latest
   // deposit transaction to force it to be positive
-  const primaryAccount = accounts.find(a => (a.name = 'Bank of America'));
+  const primaryAccount = accounts.find(a => a.name === 'HDFC Bank');
   const { data: primaryBalance } = await aqlQuery(
     q('transactions')
       .filter({ account: primaryAccount.id })
@@ -789,7 +851,7 @@ export async function createTestBudget(handlers: Handlers) {
   // Create some schedules
   await runMutator(() =>
     batchMessages(async () => {
-      const account = accounts.find(acc => acc.name === 'Bank of America');
+      const account = accounts.find(acc => acc.name === 'HDFC Bank');
 
       await runHandler(handlers['schedule/create'], {
         schedule: {

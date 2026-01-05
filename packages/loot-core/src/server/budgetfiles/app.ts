@@ -368,7 +368,7 @@ async function duplicateBudget({
       if (await fs.exists(newBudgetDir)) {
         await fs.removeDirRecursively(newBudgetDir);
       }
-    } catch {} // Ignore cleanup errors
+    } catch { } // Ignore cleanup errors
     throw new Error(`Failed to duplicate budget file: ${error.message}`);
   }
 
@@ -395,6 +395,8 @@ async function duplicateBudget({
 
   return newId;
 }
+
+import { seedIndianCategories } from '../util/indian-defaults';
 
 async function createBudget({
   budgetName,
@@ -441,6 +443,11 @@ async function createBudget({
   if (error) {
     logger.log('Error creating budget: ' + error);
     return { error };
+  }
+
+  // Seed Indian categories for new real budgets
+  if (!testMode) {
+    await seedIndianCategories();
   }
 
   if (!avoidUpload && !testMode) {
@@ -503,11 +510,11 @@ function onSheetChange({ names }: { names: string[] }) {
 
 async function _loadBudget(id: Budget['id']): Promise<{
   error?:
-    | 'budget-not-found'
-    | 'loading-budget'
-    | 'out-of-sync-migrations'
-    | 'out-of-sync-data'
-    | 'opening-budget';
+  | 'budget-not-found'
+  | 'loading-budget'
+  | 'out-of-sync-migrations'
+  | 'out-of-sync-data'
+  | 'opening-budget';
 }> {
   let dir: string;
   try {

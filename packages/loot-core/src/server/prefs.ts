@@ -86,5 +86,13 @@ export function getPrefs(): MetadataPrefs {
 }
 
 export function getDefaultPrefs(id: string, budgetName: string) {
-  return { id, budgetName };
+  return {
+    id,
+    budgetName,
+    numberFormat: 'comma-dot-in',
+    dateFormat: 'dd/MM/yyyy',
+    defaultCurrencyCode: 'INR',
+    currencySymbolPosition: 'before',
+    currencySpaceBetweenAmountAndSymbol: 'true',
+  };
 }
