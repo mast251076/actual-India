@@ -218,6 +218,26 @@ class FilesService {
     return this.accountDb.first(`SELECT * FROM files WHERE id = ?`, [fileId]);
   }
 
+  // --- STATELSS SUPPORT ---
+  async saveContent(fileId, content) {
+    const dbType = process.env.ACTUAL_DATABASE_TYPE || 'sqlite';
+    if (dbType === 'postgres') {
+      await this.accountDb.mutate(
+        'INSERT INTO file_contents (file_id, content) VALUES (?, ?) ON CONFLICT (file_id) DO UPDATE SET content = ?',
+        [fileId, content, content]
+      );
+    }
+  }
+
+  async getContent(fileId) {
+    const dbType = process.env.ACTUAL_DATABASE_TYPE || 'sqlite';
+    if (dbType === 'postgres') {
+      const row = await this.accountDb.first('SELECT content FROM file_contents WHERE file_id = ?', [fileId]);
+      return row ? row.content : null;
+    }
+    return null;
+  }
+
   validate(rawFile) {
     return new File({
       id: rawFile.id,

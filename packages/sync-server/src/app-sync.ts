@@ -189,10 +189,13 @@ app.post('/reset-user-file', async (req, res) => {
   await filesService.update(fileId, new FileUpdate({ groupId: null }));
 
   if (groupId) {
-    try {
-      await fs.unlink(getPathForGroupFile(groupId));
-    } catch {
-      console.log(`Unable to delete sync data for group "${groupId}"`);
+    const dbType = process.env.ACTUAL_DATABASE_TYPE || 'sqlite';
+    if (dbType !== 'postgres') {
+      try {
+        await fs.unlink(getPathForGroupFile(groupId));
+      } catch {
+        console.log(`Unable to delete sync data for group "${groupId}"`);
+      }
     }
   }
 
@@ -201,8 +204,6 @@ app.post('/reset-user-file', async (req, res) => {
 
 app.post('/upload-user-file', async (req, res) => {
   if (typeof req.headers['x-actual-name'] !== 'string') {
-    // FIXME: Not sure how this cannot be a string when the header is
-    // set.
     res.status(400).send('single x-actual-name is required');
     return;
   }
@@ -243,18 +244,21 @@ app.post('/upload-user-file', async (req, res) => {
     return;
   }
 
-  try {
-    await fs.writeFile(getPathForUserFile(fileId), req.body);
-  } catch (err) {
-    console.log('Error writing file', err);
-    res.status(500).send({ status: 'error' });
-    return;
+  const dbType = process.env.ACTUAL_DATABASE_TYPE || 'sqlite';
+  if (dbType === 'postgres') {
+    await filesService.saveContent(fileId, req.body);
+  } else {
+    try {
+      await fs.writeFile(getPathForUserFile(fileId), req.body);
+    } catch (err) {
+      console.log('Error writing file', err);
+      res.status(500).send({ status: 'error' });
+      return;
+    }
   }
 
   if (!currentFile) {
-    // it's new
     groupId = uuidv4();
-
     await filesService.set(
       new File({
         id: fileId,
@@ -262,25 +266,18 @@ app.post('/upload-user-file', async (req, res) => {
         syncVersion: syncFormatVersion,
         name,
         encryptMeta,
-        owner:
-          res.locals.user_id ||
-          (() => {
-            throw new Error('User ID is required for file creation');
-          })(),
+        owner: res.locals.user_id,
       }),
     );
-
     res.send({ status: 'ok', groupId });
     return;
   }
 
   if (!groupId) {
-    // sync state was reset, create new group
     groupId = uuidv4();
     await filesService.update(fileId, new FileUpdate({ groupId }));
   }
 
-  // Regardless, update some properties
   await filesService.update(
     fileId,
     new FileUpdate({
@@ -296,8 +293,6 @@ app.post('/upload-user-file', async (req, res) => {
 app.get('/download-user-file', async (req, res) => {
   const fileId = req.headers['x-actual-file-id'];
   if (typeof fileId !== 'string') {
-    // FIXME: Not sure how this cannot be a string when the header is
-    // set.
     res.status(400).send('Single file ID is required');
     return;
   }
@@ -307,27 +302,32 @@ app.get('/download-user-file', async (req, res) => {
     return;
   }
 
-  const path = getPathForUserFile(fileId);
-
-  if (!path.startsWith(resolve(config.get('userFiles')))) {
-    //Ensure the user doesn't try to access files outside of the user files directory
-    res.status(403).send('Access denied');
-    return;
+  const dbType = process.env.ACTUAL_DATABASE_TYPE || 'sqlite';
+  if (dbType === 'postgres') {
+    const content = await filesService.getContent(fileId);
+    if (!content) {
+      res.status(404).send('File content not found');
+      return;
+    }
+    res.setHeader('Content-Disposition', `attachment;filename=${fileId}`);
+    res.send(content);
+  } else {
+    const path = getPathForUserFile(fileId);
+    if (!path.startsWith(resolve(config.get('userFiles')))) {
+      res.status(403).send('Access denied');
+      return;
+    }
+    res.setHeader('Content-Disposition', `attachment;filename=${fileId}`);
+    res.sendFile(path, { dotfiles: 'allow' });
   }
-
-  res.setHeader('Content-Disposition', `attachment;filename=${fileId}`);
-  res.sendFile(path, { dotfiles: 'allow' });
 });
 
 app.post('/update-user-filename', async (req, res) => {
   const { fileId, name } = req.body || {};
-
   const filesService = new FilesService(getAccountDb());
-
   if (!(await verifyFileExists(fileId, filesService, res, 'file not found'))) {
     return;
   }
-
   await filesService.update(fileId, new FileUpdate({ name }));
   res.send(OK_RESPONSE);
 });
@@ -335,7 +335,6 @@ app.post('/update-user-filename', async (req, res) => {
 app.get('/list-user-files', async (req, res) => {
   const fileService = new FilesService(getAccountDb());
   const rows = await fileService.find({ userId: res.locals.user_id });
-
   const data = await Promise.all(rows.map(async row => {
     const usersWithAccess = await fileService.findUsersWithAccess(row.id);
     return {
@@ -351,33 +350,22 @@ app.get('/list-user-files', async (req, res) => {
       })),
     };
   }));
-
-  res.send({
-    status: 'ok',
-    data,
-  });
+  res.send({ status: 'ok', data });
 });
 
 app.get('/get-user-file-info', async (req, res) => {
   const fileId = req.headers['x-actual-file-id'];
-
   const fileService = new FilesService(getAccountDb());
-
   const file = await verifyFileExists(fileId, fileService, res, {
     status: 'error',
     reason: 'file-not-found',
   });
-
-  if (!file) {
-    return;
-  }
-
+  if (!file) return;
   const usersWithAccess = await fileService.findUsersWithAccess(file.id);
-
   res.send({
     status: 'ok',
     data: {
-      deleted: boolToInt(file.deleted), //   FIXME: convert to boolean, make sure it works in the frontend
+      deleted: boolToInt(file.deleted),
       fileId: file.id,
       groupId: file.groupId,
       name: file.name,
@@ -392,38 +380,20 @@ app.get('/get-user-file-info', async (req, res) => {
 
 app.post('/delete-user-file', async (req, res) => {
   const { fileId } = req.body || {};
-
   if (!fileId) {
-    res.status(422).send({
-      details: 'fileId-required',
-      reason: 'unprocessable-entity',
-      status: 'error',
-    });
+    res.status(422).send({ details: 'fileId-required', reason: 'unprocessable-entity', status: 'error' });
     return;
   }
-
   const filesService = new FilesService(getAccountDb());
   const file = await verifyFileExists(fileId, filesService, res, 'file-not-found');
-  if (!file) {
-    return;
-  }
-
-  // Check if user has permission to delete the file
+  if (!file) return;
   const { user_id: userId } = res.locals;
-
   const isOwner = file.owner === userId;
   const isServerAdmin = await isAdmin(userId);
-
   if (!isOwner && !isServerAdmin) {
-    res.status(403).send({
-      status: 'error',
-      reason: 'forbidden',
-      details: 'file-delete-not-allowed',
-    });
+    res.status(403).send({ status: 'error', reason: 'forbidden', details: 'file-delete-not-allowed' });
     return;
   }
-
   await filesService.update(fileId, new FileUpdate({ deleted: true }));
-
   res.send(OK_RESPONSE);
 });

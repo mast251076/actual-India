@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS files (
     owner TEXT
 );
 
+-- 3.5 File Contents (for stateless Cloud Run support)
+CREATE TABLE IF NOT EXISTS file_contents (
+    file_id TEXT PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    content BYTEA NOT NULL
+);
+
 -- 4. Sessions
 CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY,
@@ -75,7 +81,3 @@ CREATE TABLE IF NOT EXISTS pending_openid_requests (
     return_url TEXT,
     expiry_time BIGINT
 );
-
--- Note: Actual Budget will bootstrap itself on first run if the 'auth' table is empty.
--- However, for PostgreSQL, you might want to pre-seed the auth method if you aren't using the UI bootstrap.
--- The server will handle this automatically if it sees an empty auth table.
