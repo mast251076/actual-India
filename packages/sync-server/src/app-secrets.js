@@ -17,7 +17,7 @@ app.use(validateSessionMiddleware);
 app.post('/', async (req, res) => {
   let method;
   try {
-    const result = getAccountDb().first(
+    const result = await getAccountDb().first(
       'SELECT method FROM auth WHERE active = 1',
     );
     method = result?.method;
@@ -32,7 +32,7 @@ app.post('/', async (req, res) => {
   const { name, value } = req.body || {};
 
   if (method === 'openid') {
-    const canSaveSecrets = isAdmin(res.locals.user_id);
+    const canSaveSecrets = await isAdmin(res.locals.user_id);
 
     if (!canSaveSecrets) {
       res.status(403).send({
@@ -45,14 +45,14 @@ app.post('/', async (req, res) => {
     }
   }
 
-  secretsService.set(name, value);
+  await secretsService.set(name, value);
 
   res.status(200).send({ status: 'ok' });
 });
 
 app.get('/:name', async (req, res) => {
   const name = req.params.name;
-  const keyExists = secretsService.exists(name);
+  const keyExists = await secretsService.exists(name);
   if (keyExists) {
     res.sendStatus(204);
   } else {

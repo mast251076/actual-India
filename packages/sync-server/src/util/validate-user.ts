@@ -7,14 +7,14 @@ import { config } from '../load-config';
 export const TOKEN_EXPIRATION_NEVER = -1;
 const MS_PER_SECOND = 1000;
 
-export function validateSession(req: Request, res: Response) {
+export async function validateSession(req: Request, res: Response) {
   let { token } = req.body || {};
 
   if (!token) {
     token = req.headers['x-actual-token'];
   }
 
-  const session = getSession(token);
+  const session = await getSession(token);
 
   if (!session) {
     res.status(401);

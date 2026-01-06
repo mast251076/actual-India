@@ -26,18 +26,18 @@ export { app as handlers };
 // /boostrap (special endpoint for setting up the instance, cant call again)
 // /login
 
-app.get('/needs-bootstrap', (req, res) => {
-  const availableLoginMethods = listLoginMethods();
+app.get('/needs-bootstrap', async (req, res) => {
+  const availableLoginMethods = await listLoginMethods();
   res.send({
     status: 'ok',
     data: {
-      bootstrapped: !needsBootstrap(),
+      bootstrapped: !(await needsBootstrap()),
       loginMethod:
         availableLoginMethods.length === 1
           ? availableLoginMethods[0].method
-          : getLoginMethod(),
+          : await getLoginMethod(),
       availableLoginMethods,
-      multiuser: getActiveLoginMethod() === 'openid',
+      multiuser: (await getActiveLoginMethod()) === 'openid',
     },
   });
 });
@@ -52,13 +52,13 @@ app.post('/bootstrap', async (req, res) => {
   res.send({ status: 'ok', data: boot });
 });
 
-app.get('/login-methods', (req, res) => {
-  const methods = listLoginMethods();
+app.get('/login-methods', async (req, res) => {
+  const methods = await listLoginMethods();
   res.send({ status: 'ok', methods });
 });
 
 app.post('/login', async (req, res) => {
-  const loginMethod = getLoginMethod(req);
+  const loginMethod = await getLoginMethod(req);
   console.log('Logging in via ' + loginMethod);
   let tokenRes = null;
   switch (loginMethod) {
@@ -72,7 +72,7 @@ app.post('/login', async (req, res) => {
         return;
       } else {
         if (validateAuthHeader(req)) {
-          tokenRes = loginWithPassword(headerVal);
+          tokenRes = await loginWithPassword(headerVal);
         } else {
           res.send({ status: 'error', reason: 'proxy-not-trusted' });
           return;
@@ -101,7 +101,7 @@ app.post('/login', async (req, res) => {
     }
 
     default:
-      tokenRes = loginWithPassword(req.body.password);
+      tokenRes = await loginWithPassword(req.body.password);
       break;
   }
   const { error, token } = tokenRes;
@@ -114,11 +114,11 @@ app.post('/login', async (req, res) => {
   res.send({ status: 'ok', data: { token } });
 });
 
-app.post('/change-password', (req, res) => {
-  const session = validateSession(req, res);
+app.post('/change-password', async (req, res) => {
+  const session = await validateSession(req, res);
   if (!session) return;
 
-  const { error } = changePassword(req.body.password);
+  const { error } = await changePassword(req.body.password);
 
   if (error) {
     res.status(400).send({ status: 'error', reason: error });
@@ -128,10 +128,10 @@ app.post('/change-password', (req, res) => {
   res.send({ status: 'ok', data: {} });
 });
 
-app.get('/validate', (req, res) => {
-  const session = validateSession(req, res);
+app.get('/validate', async (req, res) => {
+  const session = await validateSession(req, res);
   if (session) {
-    const user = getUserInfo(session.user_id);
+    const user = await getUserInfo(session.user_id);
     if (!user) {
       res.status(400).send({ status: 'error', reason: 'User not found' });
       return;

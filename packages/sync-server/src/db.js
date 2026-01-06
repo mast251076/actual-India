@@ -1,58 +1,111 @@
-import Database from 'better-sqlite3';
+import { join } from 'node:path';
+import sqlite from 'better-sqlite3';
+import pg from 'pg';
+const { Pool } = pg;
 
-class WrappedDatabase {
-  constructor(db) {
-    this.db = db;
-  }
+import { config } from './load-config';
 
-  /**
-   * @param {string} sql
-   * @param {string[]} params
-   */
-  all(sql, params = []) {
-    const stmt = this.db.prepare(sql);
-    return stmt.all(...params);
-  }
+class SQLiteDatabase {
+    constructor(dbPath) {
+        this.db = new sqlite(dbPath);
+    }
 
-  /**
-   * @param {string} sql
-   * @param {string[]} params
-   */
-  first(sql, params = []) {
-    const rows = this.all(sql, params);
-    return rows.length === 0 ? null : rows[0];
-  }
+    async all(sql, params = []) {
+        return this.db.prepare(sql).all(params);
+    }
 
-  /**
-   * @param {string} sql
-   */
-  exec(sql) {
-    return this.db.exec(sql);
-  }
+    async first(sql, params = []) {
+        return this.db.prepare(sql).get(params);
+    }
 
-  /**
-   * @param {string} sql
-   * @param {string[]} params
-   */
-  mutate(sql, params = []) {
-    const stmt = this.db.prepare(sql);
-    const info = stmt.run(...params);
-    return { changes: info.changes, insertId: info.lastInsertRowid };
-  }
+    async mutate(sql, params = []) {
+        const res = this.db.prepare(sql).run(params);
+        return {
+            changes: res.changes,
+            lastInsertRowid: res.lastInsertRowid,
+        };
+    }
 
-  /**
-   * @param {() => void} fn
-   */
-  transaction(fn) {
-    return this.db.transaction(fn)();
-  }
+    async exec(sql) {
+        return this.db.exec(sql);
+    }
 
-  close() {
-    this.db.close();
-  }
+    async transaction(fn) {
+        const transaction = this.db.transaction(fn);
+        return transaction();
+    }
+
+    async close() {
+        this.db.close();
+    }
 }
 
-/** @param {string} filename */
-export function openDatabase(filename) {
-  return new WrappedDatabase(new Database(filename));
+class PostgresDatabase {
+    constructor(url) {
+        this.pool = new Pool({
+            connectionString: url,
+            ssl: url.includes('supabase.co') || url.includes('postgres.render.com')
+                ? { rejectUnauthorized: false }
+                : false,
+        });
+    }
+
+    convertParams(sql) {
+        let index = 1;
+        return sql.replace(/\?/g, () => `$${index++}`);
+    }
+
+    async all(sql, params = []) {
+        const pgSql = this.convertParams(sql);
+        const res = await this.pool.query(pgSql, params);
+        return res.rows;
+    }
+
+    async first(sql, params = []) {
+        const pgSql = this.convertParams(sql);
+        const res = await this.pool.query(pgSql, params);
+        return res.rows[0];
+    }
+
+    async mutate(sql, params = []) {
+        const pgSql = this.convertParams(sql);
+        const res = await this.pool.query(pgSql, params);
+        return {
+            changes: res.rowCount,
+            lastInsertRowid: null,
+        };
+    }
+
+    async exec(sql) {
+        return this.pool.query(sql);
+    }
+
+    async transaction(fn) {
+        const client = await this.pool.connect();
+        try {
+            await client.query('BEGIN');
+            await fn();
+            await client.query('COMMIT');
+        } catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
+        } finally {
+            client.release();
+        }
+    }
+
+    async close() {
+        // No-op for pool
+    }
+}
+
+export function openDatabase(dbPath) {
+    const dbType = process.env.ACTUAL_DATABASE_TYPE || config.get('databaseType') || 'sqlite';
+    const dbUrl = process.env.ACTUAL_DATABASE_URL || config.get('databaseUrl');
+
+    if (dbType === 'postgres' && dbUrl) {
+        return new PostgresDatabase(dbUrl);
+    } else {
+        return new SQLiteDatabase(dbPath);
+    }
 }

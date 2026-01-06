@@ -14,7 +14,7 @@ app.use(requestLoggerMiddleware);
 app.post(
   '/status',
   handleError(async (req, res) => {
-    const token = secretsService.get(SecretName.simplefin_token);
+    const token = await secretsService.get(SecretName.simplefin_token);
     const configured = token != null && token !== 'Forbidden';
 
     res.send({
@@ -29,16 +29,16 @@ app.post(
 app.post(
   '/accounts',
   handleError(async (req, res) => {
-    let accessKey = secretsService.get(SecretName.simplefin_accessKey);
+    let accessKey = await secretsService.get(SecretName.simplefin_accessKey);
 
     try {
       if (accessKey == null || accessKey === 'Forbidden') {
-        const token = secretsService.get(SecretName.simplefin_token);
+        const token = await secretsService.get(SecretName.simplefin_token);
         if (token == null || token === 'Forbidden') {
           throw new Error('No token');
         } else {
           accessKey = await getAccessKey(token);
-          secretsService.set(SecretName.simplefin_accessKey, accessKey);
+          await secretsService.set(SecretName.simplefin_accessKey, accessKey);
           if (accessKey == null || accessKey === 'Forbidden') {
             throw new Error('No access key');
           }
@@ -70,7 +70,7 @@ app.post(
   handleError(async (req, res) => {
     const { accountId, startDate } = req.body || {};
 
-    const accessKey = secretsService.get(SecretName.simplefin_accessKey);
+    const accessKey = await secretsService.get(SecretName.simplefin_accessKey);
 
     if (accessKey == null || accessKey === 'Forbidden') {
       invalidToken(res);
@@ -123,9 +123,9 @@ app.post(
         data: !Array.isArray(accountId)
           ? results.errors[accountId][0]
           : {
-              ...response,
-              errors: results.errors,
-            },
+            ...response,
+            errors: results.errors,
+          },
       });
       return;
     }

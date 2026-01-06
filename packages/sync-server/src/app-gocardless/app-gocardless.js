@@ -33,7 +33,7 @@ app.post('/status', async (req, res) => {
   res.send({
     status: 'ok',
     data: {
-      configured: goCardlessService.isConfigured(),
+      configured: await goCardlessService.isConfigured(),
     },
   });
 });
@@ -106,12 +106,12 @@ app.post(
       status: 'ok',
       data: showDemo
         ? [
-            {
-              id: 'SANDBOXFINANCE_SFIN0000',
-              name: 'DEMO bank (used for testing bank-sync)',
-            },
-            ...data,
-          ]
+          {
+            id: 'SANDBOXFINANCE_SFIN0000',
+            name: 'DEMO bank (used for testing bank-sync)',
+          },
+          ...data,
+        ]
         : data,
     });
   }),

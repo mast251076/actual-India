@@ -22,10 +22,10 @@ const GoCardlessClient = nordigenNode.default;
 
 const clients = new Map();
 
-const getGocardlessClient = () => {
+const getGocardlessClient = async () => {
   const secrets = {
-    secretId: secretsService.get(SecretName.gocardless_secretId),
-    secretKey: secretsService.get(SecretName.gocardless_secretKey),
+    secretId: await secretsService.get(SecretName.gocardless_secretId),
+    secretKey: await secretsService.get(SecretName.gocardless_secretKey),
   };
 
   const hash = JSON.stringify(secrets);
@@ -65,11 +65,12 @@ export const handleGoCardlessError = error => {
 export const goCardlessService = {
   /**
    * Check if the GoCardless service is configured to be used.
-   * @returns {boolean}
+   * @returns {Promise<boolean>}
    */
-  isConfigured: () => {
+  isConfigured: async () => {
+    const clientInstance = await getGocardlessClient();
     return !!(
-      getGocardlessClient().secretId && getGocardlessClient().secretKey
+      clientInstance.secretId && clientInstance.secretKey
     );
   },
 
@@ -88,7 +89,8 @@ export const goCardlessService = {
       return clockTimestamp >= payload.exp;
     };
 
-    if (isExpiredJwtToken(getGocardlessClient().token)) {
+    const clientInstance = await getGocardlessClient();
+    if (isExpiredJwtToken(clientInstance.token)) {
       // Generate new access token. Token is valid for 24 hours
       // Note: access_token is automatically injected to other requests after you successfully obtain it
       try {
@@ -338,7 +340,7 @@ export const goCardlessService = {
         console.log(body);
         console.log(
           'Falling back to accessValidForDays = 90 ' +
-            'and maxHistoricalDays = 89',
+          'and maxHistoricalDays = 89',
         );
 
         response = await client.initSession({
@@ -377,7 +379,7 @@ export const goCardlessService = {
 
     let response;
     try {
-      response = client.deleteRequisition(requisitionId);
+      response = await client.deleteRequisition(requisitionId);
     } catch (error) {
       handleGoCardlessError(error);
     }
@@ -387,7 +389,6 @@ export const goCardlessService = {
 
   /**
    * Retrieve a requisition by ID
-   * https://nordigen.com/en/docs/account-information/integration/parameters-and-responses/#/requisitions/requisition%20by%20id
    * @param { string } requisitionId
    * @throws {InvalidInputDataError}
    * @throws {InvalidGoCardlessTokenError}
@@ -404,7 +405,7 @@ export const goCardlessService = {
 
     let response;
     try {
-      response = client.getRequisitionById(requisitionId);
+      response = await client.getRequisitionById(requisitionId);
     } catch (error) {
       handleGoCardlessError(error);
     }
@@ -432,9 +433,6 @@ export const goCardlessService = {
     const accountDetails = detailedAccount?.account || {};
     const metadata = metadataAccount || {};
 
-    // Some banks provide additional data in both fields, but can do yucky things like have an empty
-    // string in one place but not the other. We'll fix this by merging the two objects, but preferring truthy values
-    // from the metadata object over the details object.
     const mergedAccount = {};
     const uniqueKeys = new Set([
       ...Object.keys(accountDetails),
@@ -450,9 +448,6 @@ export const goCardlessService = {
 
   /**
    * Retrieve account metadata by account id
-   *
-   * Unlike getDetailedAccount, this method is not affected by institution rate-limits.
-   *
    * @param accountId
    * @returns {Promise<import('../gocardless-node.types').GoCardlessAccountMetadata>}
    */
@@ -470,14 +465,6 @@ export const goCardlessService = {
   /**
    * Retrieve details about all Institutions in a specific country
    * @param country
-   * @throws {InvalidInputDataError}
-   * @throws {InvalidGoCardlessTokenError}
-   * @throws {AccessDeniedError}
-   * @throws {NotFoundError}
-   * @throws {ResourceSuspended}
-   * @throws {RateLimitError}
-   * @throws {UnknownError}
-   * @throws {ServiceError}
    * @returns {Promise<Array<import('../gocardless-node.types').Institution>>}
    */
   getInstitutions: async country => {
@@ -494,14 +481,6 @@ export const goCardlessService = {
   /**
    * Retrieve details about a specific Institution
    * @param institutionId
-   * @throws {InvalidInputDataError}
-   * @throws {InvalidGoCardlessTokenError}
-   * @throws {AccessDeniedError}
-   * @throws {NotFoundError}
-   * @throws {ResourceSuspended}
-   * @throws {RateLimitError}
-   * @throws {UnknownError}
-   * @throws {ServiceError}
    * @returns {Promise<import('../gocardless-node.types').Institution>}
    */
   getInstitution: async institutionId => {
@@ -538,14 +517,6 @@ export const goCardlessService = {
   /**
    * Returns account transaction in provided dates
    * @param {import('../gocardless.types').GetTransactionsParams} params
-   * @throws {InvalidInputDataError}
-   * @throws {InvalidGoCardlessTokenError}
-   * @throws {AccessDeniedError}
-   * @throws {NotFoundError}
-   * @throws {ResourceSuspended}
-   * @throws {RateLimitError}
-   * @throws {UnknownError}
-   * @throws {ServiceError}
    * @returns {Promise<import('../gocardless.types').GetTransactionsResponse>}
    */
   getTransactions: async ({ institutionId, accountId, startDate, endDate }) => {
@@ -574,14 +545,6 @@ export const goCardlessService = {
   /**
    * Returns account available balances
    * @param accountId
-   * @throws {InvalidInputDataError}
-   * @throws {InvalidGoCardlessTokenError}
-   * @throws {AccessDeniedError}
-   * @throws {NotFoundError}
-   * @throws {ResourceSuspended}
-   * @throws {RateLimitError}
-   * @throws {UnknownError}
-   * @throws {ServiceError}
    * @returns {Promise<import('../gocardless.types').GetBalances>}
    */
   getBalances: async accountId => {
@@ -603,25 +566,25 @@ export const goCardlessService = {
  */
 export const client = {
   getBalances: async accountId =>
-    await getGocardlessClient().account(accountId).getBalances(),
+    (await getGocardlessClient()).account(accountId).getBalances(),
   getTransactions: async ({ accountId, dateFrom, dateTo }) =>
-    await getGocardlessClient().account(accountId).getTransactions({
+    (await getGocardlessClient()).account(accountId).getTransactions({
       dateFrom,
       dateTo,
       country: undefined,
     }),
   getInstitutions: async country =>
-    await getGocardlessClient().institution.getInstitutions({ country }),
+    (await getGocardlessClient()).institution.getInstitutions({ country }),
   getInstitutionById: async institutionId =>
-    await getGocardlessClient().institution.getInstitutionById(institutionId),
+    (await getGocardlessClient()).institution.getInstitutionById(institutionId),
   getDetails: async accountId =>
-    await getGocardlessClient().account(accountId).getDetails(),
+    (await getGocardlessClient()).account(accountId).getDetails(),
   getMetadata: async accountId =>
-    await getGocardlessClient().account(accountId).getMetadata(),
+    (await getGocardlessClient()).account(accountId).getMetadata(),
   getRequisitionById: async requisitionId =>
-    await getGocardlessClient().requisition.getRequisitionById(requisitionId),
+    (await getGocardlessClient()).requisition.getRequisitionById(requisitionId),
   deleteRequisition: async requisitionId =>
-    await getGocardlessClient().requisition.deleteRequisition(requisitionId),
+    (await getGocardlessClient()).requisition.deleteRequisition(requisitionId),
   initSession: async ({
     redirectUrl,
     institutionId,
@@ -633,7 +596,7 @@ export const client = {
     redirectImmediate,
     accountSelection,
   }) =>
-    await getGocardlessClient().initSession({
+    (await getGocardlessClient()).initSession({
       redirectUrl,
       institutionId,
       referenceId,
@@ -644,7 +607,7 @@ export const client = {
       redirectImmediate,
       accountSelection,
     }),
-  generateToken: async () => await getGocardlessClient().generateToken(),
+  generateToken: async () => (await getGocardlessClient()).generateToken(),
   exchangeToken: async ({ refreshToken }) =>
-    await getGocardlessClient().exchangeToken({ refreshToken }),
+    (await getGocardlessClient()).exchangeToken({ refreshToken }),
 };

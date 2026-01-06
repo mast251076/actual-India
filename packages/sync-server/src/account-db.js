@@ -18,16 +18,16 @@ export function getAccountDb() {
   return _accountDb;
 }
 
-export function needsBootstrap() {
+export async function needsBootstrap() {
   const accountDb = getAccountDb();
-  const rows = accountDb.all('SELECT * FROM auth');
+  const rows = await accountDb.all('SELECT * FROM auth');
   return rows.length === 0;
 }
 
-export function listLoginMethods() {
+export async function listLoginMethods() {
   const accountDb = getAccountDb();
-  const rows = accountDb.all('SELECT method, display_name, active FROM auth');
-  return rows
+  const rows = await accountDb.all('SELECT method, display_name, active FROM auth');
+  const availableMethods = rows
     .filter(f =>
       rows.length > 1 && config.get('enforceOpenId')
         ? f.method === 'openid'
@@ -38,12 +38,13 @@ export function listLoginMethods() {
       active: r.active,
       displayName: r.display_name,
     }));
+  return availableMethods;
 }
 
-export function getActiveLoginMethod() {
+export async function getActiveLoginMethod() {
   const accountDb = getAccountDb();
   const { method } =
-    accountDb.first('SELECT method FROM auth WHERE active = 1') || {};
+    (await accountDb.first('SELECT method FROM auth WHERE active = 1')) || {};
   return method;
 }
 
@@ -53,7 +54,7 @@ export function getActiveLoginMethod() {
  * config options
  * fall back to using password
  */
-export function getLoginMethod(req) {
+export async function getLoginMethod(req) {
   if (
     typeof req !== 'undefined' &&
     (req.body || { loginMethod: null }).loginMethod &&
@@ -70,7 +71,7 @@ export function getLoginMethod(req) {
     return config.get('loginMethod');
   }
 
-  const activeMethod = getActiveLoginMethod();
+  const activeMethod = await getActiveLoginMethod();
   return activeMethod || config.get('loginMethod');
 }
 
@@ -82,36 +83,36 @@ export async function bootstrap(loginSettings, forced = false) {
   const openIdEnabled = 'openId' in loginSettings;
 
   const accountDb = getAccountDb();
-  accountDb.mutate('BEGIN TRANSACTION');
+  await accountDb.mutate('BEGIN TRANSACTION');
   try {
     const { countOfOwner } =
-      accountDb.first(
+      (await accountDb.first(
         `SELECT count(*) as countOfOwner
    FROM users
    WHERE users.user_name <> '' and users.owner = 1`,
-      ) || {};
+      )) || {};
 
     if (!forced && (!openIdEnabled || countOfOwner > 0)) {
-      if (!needsBootstrap()) {
-        accountDb.mutate('ROLLBACK');
+      if (!(await needsBootstrap())) {
+        await accountDb.mutate('ROLLBACK');
         return { error: 'already-bootstrapped' };
       }
     }
 
     if (!passEnabled && !openIdEnabled) {
-      accountDb.mutate('ROLLBACK');
+      await accountDb.mutate('ROLLBACK');
       return { error: 'no-auth-method-selected' };
     }
 
     if (passEnabled && openIdEnabled && !forced) {
-      accountDb.mutate('ROLLBACK');
+      await accountDb.mutate('ROLLBACK');
       return { error: 'max-one-method-allowed' };
     }
 
     if (passEnabled) {
-      const { error } = bootstrapPassword(loginSettings.password);
+      const { error } = await bootstrapPassword(loginSettings.password);
       if (error) {
-        accountDb.mutate('ROLLBACK');
+        await accountDb.mutate('ROLLBACK');
         return { error };
       }
     }
@@ -119,25 +120,26 @@ export async function bootstrap(loginSettings, forced = false) {
     if (openIdEnabled && forced) {
       const { error } = await bootstrapOpenId(loginSettings.openId);
       if (error) {
-        accountDb.mutate('ROLLBACK');
+        await accountDb.mutate('ROLLBACK');
         return { error };
       }
     }
 
-    accountDb.mutate('COMMIT');
-    return passEnabled ? loginWithPassword(loginSettings.password) : {};
+    await accountDb.mutate('COMMIT');
+    return passEnabled ? await loginWithPassword(loginSettings.password) : {};
   } catch (error) {
-    accountDb.mutate('ROLLBACK');
+    await accountDb.mutate('ROLLBACK');
     throw error;
   }
 }
 
-export function isAdmin(userId) {
-  return hasPermission(userId, 'ADMIN');
+export async function isAdmin(userId) {
+  return await hasPermission(userId, 'ADMIN');
 }
 
-export function hasPermission(userId, permission) {
-  return getUserPermission(userId) === permission;
+export async function hasPermission(userId, permission) {
+  const userPermission = await getUserPermission(userId);
+  return userPermission === permission;
 }
 
 export async function enableOpenID(loginSettings) {
@@ -150,7 +152,7 @@ export async function enableOpenID(loginSettings) {
     return { error };
   }
 
-  getAccountDb().mutate('DELETE FROM sessions');
+  await getAccountDb().mutate('DELETE FROM sessions');
 }
 
 export async function disableOpenID(loginSettings) {
@@ -160,9 +162,9 @@ export async function disableOpenID(loginSettings) {
 
   const accountDb = getAccountDb();
   const { extra_data: passwordHash } =
-    accountDb.first('SELECT extra_data FROM auth WHERE method = ?', [
+    (await accountDb.first('SELECT extra_data FROM auth WHERE method = ?', [
       'password',
-    ]) || {};
+    ])) || {};
 
   if (!passwordHash) {
     return { error: 'invalid-password' };
@@ -186,19 +188,19 @@ export async function disableOpenID(loginSettings) {
   }
 
   try {
-    accountDb.transaction(() => {
-      accountDb.mutate('DELETE FROM sessions');
-      accountDb.mutate(
+    await accountDb.transaction(async () => {
+      await accountDb.mutate('DELETE FROM sessions');
+      await accountDb.mutate(
         `DELETE FROM user_access
-                              WHERE user_access.user_id IN (
-                                  SELECT users.id
-                                  FROM users
-                                  WHERE users.user_name <> ?
-                              );`,
+                               WHERE user_access.user_id IN (
+                                   SELECT users.id
+                                   FROM users
+                                   WHERE users.user_name <> ?
+                               );`,
         [''],
       );
-      accountDb.mutate('DELETE FROM users WHERE user_name <> ?', ['']);
-      accountDb.mutate('DELETE FROM auth WHERE method = ?', ['openid']);
+      await accountDb.mutate('DELETE FROM users WHERE user_name <> ?', ['']);
+      await accountDb.mutate('DELETE FROM auth WHERE method = ?', ['openid']);
     });
   } catch (err) {
     console.error('Error cleaning up openid information:', err);
@@ -206,34 +208,34 @@ export async function disableOpenID(loginSettings) {
   }
 }
 
-export function getSession(token) {
+export async function getSession(token) {
   const accountDb = getAccountDb();
-  return accountDb.first('SELECT * FROM sessions WHERE token = ?', [token]);
+  return await accountDb.first('SELECT * FROM sessions WHERE token = ?', [token]);
 }
 
-export function getUserInfo(userId) {
+export async function getUserInfo(userId) {
   const accountDb = getAccountDb();
-  return accountDb.first('SELECT * FROM users WHERE id = ?', [userId]);
+  return await accountDb.first('SELECT * FROM users WHERE id = ?', [userId]);
 }
 
-export function getUserPermission(userId) {
+export async function getUserPermission(userId) {
   const accountDb = getAccountDb();
-  const { role } = accountDb.first(
+  const { role } = (await accountDb.first(
     `SELECT role FROM users
           WHERE users.id = ?`,
     [userId],
-  ) || { role: '' };
+  )) || { role: '' };
 
   return role;
 }
 
-export function clearExpiredSessions() {
+export async function clearExpiredSessions() {
   const clearThreshold = Math.floor(Date.now() / 1000) - 3600;
 
-  const deletedSessions = getAccountDb().mutate(
+  const deletedSessions = (await getAccountDb().mutate(
     'DELETE FROM sessions WHERE expires_at <> -1 and expires_at < ?',
     [clearThreshold],
-  ).changes;
+  )).changes;
 
   console.log(`Deleted ${deletedSessions} old sessions`);
 }

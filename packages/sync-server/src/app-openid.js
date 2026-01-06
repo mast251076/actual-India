@@ -17,7 +17,7 @@ app.use(requestLoggerMiddleware);
 export { app as handlers };
 
 app.post('/enable', validateSessionMiddleware, async (req, res) => {
-  if (!isAdmin(res.locals.user_id)) {
+  if (!(await isAdmin(res.locals.user_id))) {
     res.status(403).send({
       status: 'error',
       reason: 'forbidden',
@@ -36,7 +36,7 @@ app.post('/enable', validateSessionMiddleware, async (req, res) => {
 });
 
 app.post('/disable', validateSessionMiddleware, async (req, res) => {
-  if (!isAdmin(res.locals.user_id)) {
+  if (!(await isAdmin(res.locals.user_id))) {
     res.status(403).send({
       status: 'error',
       reason: 'forbidden',
@@ -55,19 +55,19 @@ app.post('/disable', validateSessionMiddleware, async (req, res) => {
 });
 
 app.post('/config', async (req, res) => {
-  const { cnt: ownerCount } = UserService.getOwnerCount() || {};
+  const ownerCount = await UserService.getOwnerCount();
 
   if (ownerCount > 0) {
     res.status(400).send({ status: 'error', reason: 'already-bootstraped' });
     return;
   }
 
-  if (!checkPassword(req.body.password)) {
+  if (!(await checkPassword(req.body.password))) {
     res.status(400).send({ status: 'error', reason: 'invalid-password' });
     return;
   }
 
-  const auth = UserService.getOpenIDConfig();
+  const auth = await UserService.getOpenIDConfig();
 
   if (!auth) {
     res
@@ -94,7 +94,7 @@ app.get('/callback', async (req, res) => {
     return;
   }
 
-  if (!isValidRedirectUrl(url)) {
+  if (!(await isValidRedirectUrl(url))) {
     res.status(400).send({ status: 'error', reason: 'Invalid redirect URL' });
     return;
   }

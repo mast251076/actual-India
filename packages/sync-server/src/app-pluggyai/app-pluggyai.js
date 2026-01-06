@@ -14,7 +14,7 @@ app.use(requestLoggerMiddleware);
 app.post(
   '/status',
   handleError(async (req, res) => {
-    const clientId = secretsService.get(SecretName.pluggyai_clientId);
+    const clientId = await secretsService.get(SecretName.pluggyai_clientId);
     const configured = clientId != null;
 
     res.send({
@@ -30,10 +30,11 @@ app.post(
   '/accounts',
   handleError(async (req, res) => {
     try {
-      const itemIds = secretsService
-        .get(SecretName.pluggyai_itemIds)
+      const itemIdsStr = await secretsService.get(SecretName.pluggyai_itemIds);
+      const itemIds = (itemIdsStr || '')
         .split(',')
-        .map(item => item.trim());
+        .map(item => item.trim())
+        .filter(item => item !== '');
 
       let accounts = [];
 

@@ -17,17 +17,17 @@ app.use(requestLoggerMiddleware);
 
 export { app as handlers };
 
-app.get('/owner-created/', (req, res) => {
+app.get('/owner-created/', async (req, res) => {
   try {
-    const ownerCount = UserService.getOwnerCount();
+    const ownerCount = await UserService.getOwnerCount();
     res.json(ownerCount > 0);
   } catch {
     res.status(500).json({ error: 'Failed to retrieve owner count' });
   }
 });
 
-app.get('/users/', validateSessionMiddleware, (req, res) => {
-  const users = UserService.getAllUsers();
+app.get('/users/', validateSessionMiddleware, async (req, res) => {
+  const users = await UserService.getAllUsers();
   res.json(
     users.map(u => ({
       ...u,
@@ -38,7 +38,7 @@ app.get('/users/', validateSessionMiddleware, (req, res) => {
 });
 
 app.post('/users', validateSessionMiddleware, async (req, res) => {
-  if (!isAdmin(res.locals.user_id)) {
+  if (!(await isAdmin(res.locals.user_id))) {
     res.status(403).send({
       status: 'error',
       reason: 'forbidden',
@@ -68,7 +68,7 @@ app.post('/users', validateSessionMiddleware, async (req, res) => {
     return;
   }
 
-  const userIdInDb = UserService.getUserByUsername(userName);
+  const userIdInDb = await UserService.getUserByUsername(userName);
   if (userIdInDb) {
     res.status(400).send({
       status: 'error',
@@ -79,18 +79,19 @@ app.post('/users', validateSessionMiddleware, async (req, res) => {
   }
 
   const userId = uuidv4();
-  UserService.insertUser(
+  await UserService.insertUser(
     userId,
     userName,
     displayName || null,
     enabled ? 1 : 0,
+    role,
   );
 
   res.status(200).send({ status: 'ok', data: { id: userId } });
 });
 
 app.patch('/users', validateSessionMiddleware, async (req, res) => {
-  if (!isAdmin(res.locals.user_id)) {
+  if (!(await isAdmin(res.locals.user_id))) {
     res.status(403).send({
       status: 'error',
       reason: 'forbidden',
@@ -120,7 +121,7 @@ app.patch('/users', validateSessionMiddleware, async (req, res) => {
     return;
   }
 
-  const userIdInDb = UserService.getUserById(id);
+  const userIdInDb = await UserService.getUserById(id);
   if (!userIdInDb) {
     res.status(400).send({
       status: 'error',
@@ -130,7 +131,7 @@ app.patch('/users', validateSessionMiddleware, async (req, res) => {
     return;
   }
 
-  UserService.updateUserWithRole(
+  await UserService.updateUserWithRole(
     userIdInDb,
     userName,
     displayName || null,
@@ -142,7 +143,7 @@ app.patch('/users', validateSessionMiddleware, async (req, res) => {
 });
 
 app.delete('/users', validateSessionMiddleware, async (req, res) => {
-  if (!isAdmin(res.locals.user_id)) {
+  if (!(await isAdmin(res.locals.user_id))) {
     res.status(403).send({
       status: 'error',
       reason: 'forbidden',
@@ -153,16 +154,16 @@ app.delete('/users', validateSessionMiddleware, async (req, res) => {
 
   const { ids } = req.body || {};
   let totalDeleted = 0;
-  ids.forEach(item => {
-    const ownerId = UserService.getOwnerId();
+  const ownerId = await UserService.getOwnerId();
 
-    if (item === ownerId) return;
+  for (const item of ids) {
+    if (item === ownerId) continue;
 
-    UserService.deleteUserAccess(item);
-    UserService.transferAllFilesFromUser(ownerId, item);
-    const usersDeleted = UserService.deleteUser(item);
+    await UserService.deleteUserAccess(item);
+    await UserService.transferAllFilesFromUser(ownerId, item);
+    const usersDeleted = await UserService.deleteUser(item);
     totalDeleted += usersDeleted;
-  });
+  }
 
   if (ids.length === totalDeleted) {
     res
@@ -177,58 +178,58 @@ app.delete('/users', validateSessionMiddleware, async (req, res) => {
   }
 });
 
-app.get('/access', validateSessionMiddleware, (req, res) => {
+app.get('/access', validateSessionMiddleware, async (req, res) => {
   const fileId = req.query.fileId;
 
-  const { granted } = UserService.checkFilePermission(
+  const { granted } = (await UserService.checkFilePermission(
     fileId,
     res.locals.user_id,
-  ) || {
+  )) || {
     granted: 0,
   };
 
-  if (granted === 0 && !isAdmin(res.locals.user_id)) {
+  if (granted === 0 && !(await isAdmin(res.locals.user_id))) {
     res.status(403).send({
       status: 'error',
       reason: 'forbidden',
       details: 'permission-not-found',
     });
-    return false;
+    return;
   }
 
-  const fileIdInDb = UserService.getFileById(fileId);
+  const fileIdInDb = await UserService.getFileById(fileId);
   if (!fileIdInDb) {
     res.status(404).send({
       status: 'error',
       reason: 'invalid-file-id',
       details: 'File not found at server',
     });
-    return false;
+    return;
   }
 
-  const accesses = UserService.getUserAccess(
+  const accesses = await UserService.getUserAccess(
     fileId,
     res.locals.user_id,
-    isAdmin(res.locals.user_id),
+    await isAdmin(res.locals.user_id),
   );
 
   res.json(accesses);
 });
 
-app.post('/access', (req, res) => {
+app.post('/access', async (req, res) => {
   const userAccess = req.body || {};
-  const session = validateSession(req, res);
+  const session = await validateSession(req, res);
 
   if (!session) return;
 
-  const { granted } = UserService.checkFilePermission(
+  const { granted } = (await UserService.checkFilePermission(
     userAccess.fileId,
     session.user_id,
-  ) || {
+  )) || {
     granted: 0,
   };
 
-  if (granted === 0 && !isAdmin(session.user_id)) {
+  if (granted === 0 && !(await isAdmin(session.user_id))) {
     res.status(400).send({
       status: 'error',
       reason: 'file-denied',
@@ -237,7 +238,7 @@ app.post('/access', (req, res) => {
     return;
   }
 
-  const fileIdInDb = UserService.getFileById(userAccess.fileId);
+  const fileIdInDb = await UserService.getFileById(userAccess.fileId);
   if (!fileIdInDb) {
     res.status(404).send({
       status: 'error',
@@ -256,7 +257,7 @@ app.post('/access', (req, res) => {
     return;
   }
 
-  if (UserService.countUserAccess(userAccess.fileId, userAccess.userId) > 0) {
+  if ((await UserService.countUserAccess(userAccess.fileId, userAccess.userId)) > 0) {
     res.status(400).send({
       status: 'error',
       reason: 'user-already-have-access',
@@ -265,24 +266,24 @@ app.post('/access', (req, res) => {
     return;
   }
 
-  UserService.addUserAccess(userAccess.userId, userAccess.fileId);
+  await UserService.addUserAccess(userAccess.userId, userAccess.fileId);
 
   res.status(200).send({ status: 'ok', data: {} });
 });
 
-app.delete('/access', (req, res) => {
+app.delete('/access', async (req, res) => {
   const fileId = req.query.fileId;
-  const session = validateSession(req, res);
+  const session = await validateSession(req, res);
   if (!session) return;
 
-  const { granted } = UserService.checkFilePermission(
+  const { granted } = (await UserService.checkFilePermission(
     fileId,
     session.user_id,
-  ) || {
+  )) || {
     granted: 0,
   };
 
-  if (granted === 0 && !isAdmin(session.user_id)) {
+  if (granted === 0 && !(await isAdmin(session.user_id))) {
     res.status(400).send({
       status: 'error',
       reason: 'file-denied',
@@ -291,7 +292,7 @@ app.delete('/access', (req, res) => {
     return;
   }
 
-  const fileIdInDb = UserService.getFileById(fileId);
+  const fileIdInDb = await UserService.getFileById(fileId);
   if (!fileIdInDb) {
     res.status(404).send({
       status: 'error',
@@ -302,7 +303,7 @@ app.delete('/access', (req, res) => {
   }
 
   const { ids } = req.body || {};
-  const totalDeleted = UserService.deleteUserAccessByFileId(ids, fileId);
+  const totalDeleted = await UserService.deleteUserAccessByFileId(ids, fileId);
 
   if (ids.length === totalDeleted) {
     res
@@ -320,14 +321,14 @@ app.delete('/access', (req, res) => {
 app.get('/access/users', validateSessionMiddleware, async (req, res) => {
   const fileId = req.query.fileId;
 
-  const { granted } = UserService.checkFilePermission(
+  const { granted } = (await UserService.checkFilePermission(
     fileId,
     res.locals.user_id,
-  ) || {
+  )) || {
     granted: 0,
   };
 
-  if (granted === 0 && !isAdmin(res.locals.user_id)) {
+  if (granted === 0 && !(await isAdmin(res.locals.user_id))) {
     res.status(400).send({
       status: 'error',
       reason: 'file-denied',
@@ -336,7 +337,7 @@ app.get('/access/users', validateSessionMiddleware, async (req, res) => {
     return;
   }
 
-  const fileIdInDb = UserService.getFileById(fileId);
+  const fileIdInDb = await UserService.getFileById(fileId);
   if (!fileIdInDb) {
     res.status(404).send({
       status: 'error',
@@ -346,24 +347,24 @@ app.get('/access/users', validateSessionMiddleware, async (req, res) => {
     return;
   }
 
-  const users = UserService.getAllUserAccess(fileId);
+  const users = await UserService.getAllUserAccess(fileId);
   res.json(users);
 });
 
 app.post(
   '/access/transfer-ownership/',
   validateSessionMiddleware,
-  (req, res) => {
+  async (req, res) => {
     const newUserOwner = req.body || {};
 
-    const { granted } = UserService.checkFilePermission(
+    const { granted } = (await UserService.checkFilePermission(
       newUserOwner.fileId,
       res.locals.user_id,
-    ) || {
+    )) || {
       granted: 0,
     };
 
-    if (granted === 0 && !isAdmin(res.locals.user_id)) {
+    if (granted === 0 && !(await isAdmin(res.locals.user_id))) {
       res.status(400).send({
         status: 'error',
         reason: 'file-denied',
@@ -372,7 +373,7 @@ app.post(
       return;
     }
 
-    const fileIdInDb = UserService.getFileById(newUserOwner.fileId);
+    const fileIdInDb = await UserService.getFileById(newUserOwner.fileId);
     if (!fileIdInDb) {
       res.status(404).send({
         status: 'error',
@@ -391,8 +392,8 @@ app.post(
       return;
     }
 
-    const newUserIdFromDb = UserService.getUserById(newUserOwner.newUserId);
-    if (newUserIdFromDb === 0) {
+    const newUserIdFromDb = await UserService.getUserById(newUserOwner.newUserId);
+    if (!newUserIdFromDb) {
       res.status(400).send({
         status: 'error',
         reason: 'new-user-not-found',
@@ -401,7 +402,7 @@ app.post(
       return;
     }
 
-    UserService.updateFileOwner(newUserOwner.newUserId, newUserOwner.fileId);
+    await UserService.updateFileOwner(newUserOwner.newUserId, newUserOwner.fileId);
 
     res.status(200).send({ status: 'ok', data: {} });
   },

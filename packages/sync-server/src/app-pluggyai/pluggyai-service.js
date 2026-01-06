@@ -4,10 +4,10 @@ import { SecretName, secretsService } from '../services/secrets-service';
 
 let pluggyClient = null;
 
-function getPluggyClient() {
+async function getPluggyClient() {
   if (!pluggyClient) {
-    const clientId = secretsService.get(SecretName.pluggyai_clientId);
-    const clientSecret = secretsService.get(SecretName.pluggyai_clientSecret);
+    const clientId = await secretsService.get(SecretName.pluggyai_clientId);
+    const clientSecret = await secretsService.get(SecretName.pluggyai_clientSecret);
 
     pluggyClient = new PluggyClient({
       clientId,
@@ -19,17 +19,17 @@ function getPluggyClient() {
 }
 
 export const pluggyaiService = {
-  isConfigured: () => {
+  isConfigured: async () => {
     return !!(
-      secretsService.get(SecretName.pluggyai_clientId) &&
-      secretsService.get(SecretName.pluggyai_clientSecret) &&
-      secretsService.get(SecretName.pluggyai_itemIds)
+      (await secretsService.get(SecretName.pluggyai_clientId)) &&
+      (await secretsService.get(SecretName.pluggyai_clientSecret)) &&
+      (await secretsService.get(SecretName.pluggyai_itemIds))
     );
   },
 
   getAccountsByItemId: async itemId => {
     try {
-      const client = getPluggyClient();
+      const client = await getPluggyClient();
       const { results, total, ...rest } = await client.fetchAccounts(itemId);
       return {
         results,
@@ -45,7 +45,7 @@ export const pluggyaiService = {
   },
   getAccountById: async accountId => {
     try {
-      const client = getPluggyClient();
+      const client = await getPluggyClient();
       const account = await client.fetchAccount(accountId);
       return {
         ...account,
@@ -60,7 +60,7 @@ export const pluggyaiService = {
 
   getTransactionsByAccountId: async (accountId, startDate, pageSize, page) => {
     try {
-      const client = getPluggyClient();
+      const client = await getPluggyClient();
 
       const account = await pluggyaiService.getAccountById(accountId);
 

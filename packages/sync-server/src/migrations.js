@@ -11,13 +11,18 @@ export function run(direction = 'up') {
   );
 
   const __dirname = dirname(fileURLToPath(import.meta.url)); // this directory
+  const dbType = process.env.ACTUAL_DATABASE_TYPE || config.get('databaseType') || 'sqlite';
+
+  if (dbType === 'postgres') {
+    console.log('Skipping SQLite migrations (using PostgreSQL)');
+    return Promise.resolve();
+  }
 
   return new Promise(resolve =>
     migrate.load(
       {
-        stateStore: `${path.join(config.get('dataDir'), '.migrate')}${
-          config.get('mode') === 'test' ? '-test' : ''
-        }`,
+        stateStore: `${path.join(config.get('dataDir'), '.migrate')}${config.get('mode') === 'test' ? '-test' : ''
+          }`,
         migrationsDirectory: path.join(__dirname, '../migrations'),
       },
       (err, set) => {

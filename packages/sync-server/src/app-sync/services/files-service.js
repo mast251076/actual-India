@@ -53,11 +53,6 @@ class File extends FileBase {
   }
 }
 
-/**
- * Represents a file update. Will only update the fields that are defined.
- * @class
- * @extends FileBase
- */
 class FileUpdate extends FileBase {
   constructor({
     name = undefined,
@@ -93,8 +88,8 @@ class FilesService {
     this.accountDb = accountDb;
   }
 
-  get(fileId) {
-    const rawFile = this.getRaw(fileId);
+  async get(fileId) {
+    const rawFile = await this.getRaw(fileId);
     if (!rawFile || (rawFile && rawFile.deleted)) {
       throw new FileNotFound();
     }
@@ -102,9 +97,9 @@ class FilesService {
     return this.validate(rawFile);
   }
 
-  set(file) {
+  async set(file) {
     const deletedInt = boolToInt(file.deleted);
-    this.accountDb.mutate(
+    await this.accountDb.mutate(
       'INSERT INTO files (id, group_id, sync_version, name, encrypt_meta, encrypt_salt, encrypt_test, encrypt_keyid, deleted, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ? ,?, ?)',
       [
         file.id,
@@ -113,24 +108,23 @@ class FilesService {
         file.name,
         file.encryptMeta,
         file.encryptSalt,
-        file.encrypt_test,
-        file.encrypt_keyid,
+        file.encryptTest,
+        file.encryptKeyId,
         deletedInt,
         file.owner,
       ],
     );
   }
 
-  find({ userId, limit = 1000 }) {
-    const canSeeAll = isAdmin(userId);
+  async find({ userId, limit = 1000 }) {
+    const canSeeAll = await isAdmin(userId);
 
-    return (
-      canSeeAll
-        ? this.accountDb.all('SELECT * FROM files WHERE deleted = 0 LIMIT ?', [
-            limit,
-          ])
-        : this.accountDb.all(
-            `SELECT files.*
+    const rows = await (canSeeAll
+      ? this.accountDb.all('SELECT * FROM files WHERE deleted = 0 LIMIT ?', [
+        limit,
+      ])
+      : this.accountDb.all(
+        `SELECT files.*
         FROM files
         WHERE files.owner = ? and deleted = 0
       UNION
@@ -140,14 +134,15 @@ class FilesService {
           ON user_access.file_id = files.id
           AND user_access.user_id = ?
        WHERE files.deleted = 0 LIMIT ?`,
-            [userId, userId, limit],
-          )
-    ).map(this.validate);
+        [userId, userId, limit],
+      ));
+
+    return rows.map(this.validate);
   }
 
-  findUsersWithAccess(fileId) {
+  async findUsersWithAccess(fileId) {
     const userAccess =
-      this.accountDb.all(
+      (await this.accountDb.all(
         `SELECT UA.user_id as userId, users.display_name displayName, users.user_name userName
               FROM files
                 JOIN user_access UA ON UA.file_id = files.id
@@ -160,12 +155,12 @@ class FilesService {
               WHERE files.id = ?
           `,
         [fileId, fileId],
-      ) || [];
+      )) || [];
 
     return userAccess;
   }
 
-  update(id, fileUpdate) {
+  async update(id, fileUpdate) {
     let query = 'UPDATE files SET';
     const params = [];
     const updates = [];
@@ -207,7 +202,7 @@ class FilesService {
       query += ' ' + updates.join(', ') + ' WHERE id = ?';
       params.push(id);
 
-      const res = this.accountDb.mutate(query, params);
+      const res = await this.accountDb.mutate(query, params);
 
       if (res.changes !== 1) {
         throw new GenericFileError('Could not update File', { id });
@@ -215,10 +210,11 @@ class FilesService {
     }
 
     // Return the modified object
-    return this.validate(this.getRaw(id));
+    const raw = await this.getRaw(id);
+    return this.validate(raw);
   }
 
-  getRaw(fileId) {
+  async getRaw(fileId) {
     return this.accountDb.first(`SELECT * FROM files WHERE id = ?`, [fileId]);
   }
 

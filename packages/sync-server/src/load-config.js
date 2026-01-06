@@ -96,6 +96,19 @@ const configSchema = convict({
     default: '::',
     env: 'ACTUAL_HOSTNAME',
   },
+  databaseType: {
+    doc: 'The type of database to use.',
+    format: ['sqlite', 'postgres'],
+    default: 'sqlite',
+    env: 'ACTUAL_DATABASE_TYPE',
+  },
+  databaseUrl: {
+    doc: 'The URL for the database connection (for postgres).',
+    format: String,
+    default: '',
+    env: 'ACTUAL_DATABASE_URL',
+    sensitive: true,
+  },
   serverFiles: {
     doc: 'Path to server files.',
     format: String,
