@@ -14,5 +14,5 @@ yarn build
 
 rm -fr build-stats
 mkdir build-stats
-mv build/kcab/stats.json build-stats/loot-core-stats.json
-mv ./stats.json build-stats/web-stats.json
+mv build/kcab/stats.json build-stats/loot-core-stats.json || true
+mv ./stats.json build-stats/web-stats.json || true
