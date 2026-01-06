@@ -1,0 +1,12 @@
+[build]
+  command = "yarn build:browser"
+  publish = "packages/desktop-client/build"
+
+[build.environment]
+  NODE_VERSION = "22"
+  YARN_VERSION = "4.10.3"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
